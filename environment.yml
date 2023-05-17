@@ -1,0 +1,11 @@
+name: ETH-ScopeM_CD7-Preview
+
+channels:
+  - conda-forge
+      
+dependencies:
+  - python=3.9
+  - numpy
+  - scipy
+  - scikit-image
+  - pip
