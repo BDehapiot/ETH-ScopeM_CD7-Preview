@@ -8,4 +8,5 @@ dependencies:
   - numpy
   - scipy
   - scikit-image
+  - joblib
   - pip
