@@ -9,13 +9,20 @@ from pylibCZIrw import czi as pyczi
 
 #%% Parameters ----------------------------------------------------------------
 
-zoom = 0.25
-img_name = 'Digoxin_Bulfan_blm_mel5-01.czi'
-# img_name = 'test02-withsoftwareAF-20x1x-095-60wells-01.czi'
+c = 0
+z = 0 
+t = 0
+
+zoom = 0.1
+pad = 20 
+noGap = True
+
+# img_name = 'Digoxin_Bulfan_blm_mel5-01.czi'
+img_name = 'test02-withsoftwareAF-20x1x-095-60wells-01.czi'
 # img_name = 'HU4NZLpR-202304051711.czi'
 img_path = str(Path('data') / img_name)
 
-#%% Extract -------------------------------------------------------------------
+#%% Process -------------------------------------------------------------------
 
 start = time.time()
 print('Process')
@@ -57,12 +64,11 @@ with pyczi.open_czi(img_path) as czidoc:
         sHeight = sCoords[s][3]
         wID = md_scn[s]['ArrayName']
         wTile = md_scn[s]['@Name']
-        # print(f'{wID}-{wTile}: x0={x0} / y0={y0}')
         
         # Scene image
         sImg = czidoc.read(
             roi=(x0, y0, sWidth, sHeight), 
-            plane={'C': 2, 'Z': 0}, 
+            plane={'C': c, 'Z': z, 'T': t}, 
             zoom=zoom,
             ).squeeze() 
         
@@ -75,8 +81,6 @@ with pyczi.open_czi(img_path) as czidoc:
         sData['wID'].append(wID)
         sData['wTile'].append(wTile)
         
-#%% dispRaw -------------------------------------------------------------------
-    
     # Extract relevant variables 
     sWidth = sData['sWidth'][0]
     sHeight = sData['sHeight'][0]
@@ -146,7 +150,6 @@ with pyczi.open_czi(img_path) as czidoc:
         wHeight = yMax - yMin
         wImg = dispRaw[yMin:yMax, xMin:xMax]
         
-        noGap = True
         if noGap:
             nonzero_rows = np.where(np.any(wImg, axis=1))[0]
             nonzero_cols = np.where(np.any(wImg, axis=0))[0]
@@ -160,8 +163,7 @@ with pyczi.open_czi(img_path) as czidoc:
         wData['wHeight'].append(wHeight)
         wData['wID'].append(wID)
         
-    # Pad well image
-    pad = 20  
+    # Pad well image 
     maxWidth = np.max([wWidth for wWidth in wData['wWidth']])
     maxHeight = np.max([wHeight for wHeight in wData['wHeight']])
     for i, wImg in enumerate(wData['wImg']):
@@ -171,14 +173,10 @@ with pyczi.open_czi(img_path) as czidoc:
         padX = targetWidth - wImg.shape[1]
         padY = targetHeight - wImg.shape[0]
         
-        if padX % 2 == 0:
-            padX0 = padX//2; padX1 = padX//2
-        else:
-            padX0 = padX//2; padX1 = padX//2 + 1   
-        if padY % 2 == 0:
-            padY0 = padY//2; padY1 = padY//2
-        else:
-            padY0 = padY//2; padY1 = padY//2 + 1  
+        if padX % 2 == 0: padX0 = padX//2; padX1 = padX//2
+        else: padX0 = padX//2; padX1 = padX//2 + 1   
+        if padY % 2 == 0: padY0 = padY//2; padY1 = padY//2
+        else: padY0 = padY//2; padY1 = padY//2 + 1  
                        
         wImg_pad = np.pad(wImg, (
             (padY0, padY1),
@@ -197,37 +195,6 @@ with pyczi.open_czi(img_path) as czidoc:
         
 end = time.time()
 print(f'  {(end-start):5.3f} s') 
-
-#%%
-
-# # Get sorted unique well IDs (wID_unique)
-# wID = [data[5] for data in sData]
-# wID_unique = list(set(wID))
-# def sort_key(value):
-#     match = re.match(r'(\D+)(\d+)', value)
-#     if match:
-#         prefix = match.group(1)
-#         number = int(match.group(2))
-#         return prefix, number
-#     return value
-# wID_unique = sorted(wID_unique, key=sort_key)
-
-# #
-# for i in wID_unique:
-#     wsData = [data for data in sData if data[5] == i]
-#     xMin = wsData[0][1]
-#     xMax = wsData[-1][1] + wsData[-1][3]
-#     yMin = wsData[0][2]
-#     yMax = wsData[-1][2] + wsData[-1][4]
-#     wWidth = xMax - xMin
-#     wHeight = yMax - yMin
-#     dispWell = np.zeros((wHeight, wWidth), dtype=int)
-#     for data in wsData:
-#         xMin = data[1]
-#         xMax = xMin + data[3]
-#         yMin = data[2]
-#         yMax = xMin + data[4]
-#         dispWell[yMin:yMax, xMin:xMax] = data[0]
 
 #%%
     
