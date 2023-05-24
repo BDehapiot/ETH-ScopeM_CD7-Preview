@@ -9,6 +9,10 @@ from itertools import product
 from pylibCZIrw import czi as pyczi
 from joblib import Parallel, delayed 
 
+#%% Comments ------------------------------------------------------------------
+
+'- deal with dim range request when dim.size == 0'
+
 #%% Parameters ----------------------------------------------------------------
 
 T = 0
@@ -16,7 +20,7 @@ Z = 'all'
 C = [0,1]
 
 zoom = 0.05
-pad = 20 
+pad = 1 
 noGap = True
 
 img_name = 'Digoxin_Bulfan_blm_mel5-01.czi'
@@ -42,10 +46,13 @@ with pyczi.open_czi(img_path) as czidoc:
 # Extract dimensions
 nX = int(md_img['SizeX'])
 nY = int(md_img['SizeY'])
+nS = int(md_img['SizeS'])
 nC = int(md_img['SizeC'])
 nZ = int(md_img['SizeZ'])
-nT = int(md_img['SizeT'])
-nS = int(md_img['SizeS'])
+nT = int(md_img['SizeT']) 
+if nC == 1: C = 'all'
+if nZ == 1: Z = 'all'
+if nT == 1: T = 'all'
     
 # Determine extraction patterns                      
 def handle_dims(dim, nDim):
@@ -207,22 +214,13 @@ for wID in wIDs_unique:
     wWidth = xMax - xMin
     wHeight = yMax - yMin
     wImg = dispRaw[..., yMin:yMax, xMin:xMax]
-       
-    if noGap:
-        wImg_flat = wImg.reshape((-1, wImg.shape[-2], wImg.shape[-1]))
-        zeroRows = np.all(wImg_flat == 0, axis=1)
-        zeroCols = np.all(wImg_flat == 0, axis=2)
-        delRows = np.where(zeroRows)[0]
-        delCols = np.where(zeroCols)[0]
-        wImg = np.delete(wImg, delRows, axis=-2)
-        wImg = np.delete(wImg, delCols, axis=-1)
 
-    # if noGap:
-        # nonzero_rows = np.where(np.any(wImg, axis=1))[0]
-        # nonzero_cols = np.where(np.any(wImg, axis=0))[0]
-        # wImg = wImg[np.ix_(nonzero_rows, nonzero_cols)]
-        # wWidth = wImg.shape[1]
-        # wHeight = wImg.shape[0]
+    if noGap:
+        nonzero_rows = np.where(np.any(wImg[0,0,0,...], axis=1))[0]
+        nonzero_cols = np.where(np.any(wImg[0,0,0,...], axis=0))[0]    
+        wImg = wImg[..., nonzero_rows, :][..., nonzero_cols]   
+        wWidth = wImg.shape[-1]
+        wHeight = wImg.shape[-2]
 
     # Append wData
     wData['wImg'].append(wImg)
@@ -233,56 +231,54 @@ for wID in wIDs_unique:
 # Pad well image 
 maxWidth = np.max([wWidth for wWidth in wData['wWidth']])
 maxHeight = np.max([wHeight for wHeight in wData['wHeight']])
-# for i, wImg in enumerate(wData['wImg']):
+for i, wImg in enumerate(wData['wImg']):
     
-#     targetWidth = maxWidth + pad
-#     targetHeight = maxHeight + pad
-#     padX = targetWidth - wImg.shape[1]
-#     padY = targetHeight - wImg.shape[0]
+    targetWidth = maxWidth + pad
+    targetHeight = maxHeight + pad
+    padX = targetWidth - wImg.shape[-1]
+    padY = targetHeight - wImg.shape[-2]
     
-#     if padX % 2 == 0: padX0 = padX//2; padX1 = padX//2
-#     else: padX0 = padX//2; padX1 = padX//2 + 1   
-#     if padY % 2 == 0: padY0 = padY//2; padY1 = padY//2
-#     else: padY0 = padY//2; padY1 = padY//2 + 1  
+    if padX % 2 == 0: padX0 = padX//2; padX1 = padX//2
+    else: padX0 = padX//2; padX1 = padX//2 + 1   
+    if padY % 2 == 0: padY0 = padY//2; padY1 = padY//2
+    else: padY0 = padY//2; padY1 = padY//2 + 1  
                    
-#     wImg_pad = np.pad(wImg, (
-#         (padY0, padY1),
-#         (padX0, padX1)
-#         ), constant_values=7500)
+    wImg_pad = np.pad(wImg, (
+        (0, 0), (0, 0), (0, 0),
+        (padY0, padY1), (padX0, padX1),
+        ), constant_values=0)
     
-#     # Append wData
-#     wData['wImg_pad'].append(wImg_pad)
-    
-# # Make well display
-# dispWell = np.zeros((wRow*wHeight, wCol*wWidth), dtype=int)
-# dispWell = []
-# for row in range(wRow):
-#     dispWell.append(np.hstack(wData['wImg_pad'][wCol*row:wCol*row+wCol]))
-# dispWell = np.vstack(dispWell)
+    # Append wData
+    wData['wImg_pad'].append(np.transpose(wImg_pad, (3,4,0,1,2)))
+
+# Make well display
+dispWell = []
+for row in range(wRow):
+    dispWell.append(np.hstack(wData['wImg_pad'][wCol*row:wCol*row+wCol]))
+dispWell = np.vstack(dispWell)
+dispWell = np.transpose(dispWell, (2,3,4,0,1))
         
 end = time.time()
 print(f'  {(end-start):5.3f} s') 
 
 #%%
     
+# io.imsave(
+#     img_path.replace('.czi', '_dispRaw.tif'),
+#     dispRaw.astype('uint16'),
+#     check_contrast=False,
+#     imagej=True,
+#     metadata={
+#         'axes': 'TZCYX', 
+#         }
+#     )
+
 io.imsave(
-    img_path.replace('.czi', '_dispRaw.tif'),
-    dispRaw.astype('uint16'),
+    img_path.replace('.czi', '_dispWell.tif'),
+    dispWell.astype('uint16'),
     check_contrast=False,
     imagej=True,
     metadata={
         'axes': 'TZCYX', 
         }
     )
-
-# io.imsave(
-#     img_path.replace('.czi', '_dispRaw.tif'),
-#     dispRaw.astype('uint16'),
-#     check_contrast=False,
-#     ) 
-
-# io.imsave(
-#     img_path.replace('.czi', '_dispWell.tif'),
-#     dispWell.astype('uint16'),
-#     check_contrast=False,
-#     ) 
