@@ -12,7 +12,6 @@ from joblib import Parallel, delayed
 
 #%% Comments ------------------------------------------------------------------
 
-'Convert to uint8 for preview (should be optionnal)'
 'Add well and tile info on image (should be optionnal)'
 
 #%% Parameters ----------------------------------------------------------------
@@ -22,7 +21,7 @@ Z = 'all'
 C = 'all'
 
 zoom = 0.1
-pad = 1 
+pad = 5 
 noGap = True
 
 # img_name = 'Digoxin_Bulfan_blm_mel5-01.czi'
@@ -108,7 +107,7 @@ def extract_scenes(s):
         t.size, z.size, c.size, 
         int(sHeight * zoom), 
         int(sWidth * zoom)
-        ), dtype=int)
+        ), dtype='uint8')
     
     # Extract scenes
     with pyczi.open_czi(img_path) as czidoc:        
@@ -117,7 +116,10 @@ def extract_scenes(s):
                 roi=(x0, y0, sWidth, sHeight), 
                 plane={'T': pattern[0], 'Z': pattern[1], 'C': pattern[2]}, 
                 zoom=zoom).squeeze()
-            sImg[idx[0],idx[1],idx[2],...] = img
+            if md_img['PixelType'] == 'Gray8':
+                sImg[idx[0],idx[1],idx[2],...] = img
+            if md_img['PixelType'] == 'Gray16':
+                sImg[idx[0],idx[1],idx[2],...] = (img // 255).astype('uint8')
         
     # Scale coordinates (acc. to zoom)
     x0 = int(x0 * zoom)
@@ -154,7 +156,7 @@ xMax = np.max(x0) + sWidth
 yMax = np.max(y0) + sHeight
 
 # Make raw display
-dispRaw = np.zeros((t.size, z.size, c.size, yMax, xMax), dtype=int)
+dispRaw = np.zeros((t.size, z.size, c.size, yMax, xMax), dtype=('uint8'))
 for s in range(len(sData['sImg'])):
     dispRaw[...,
         y0[s]:y0[s] + sHeight,
@@ -251,7 +253,7 @@ for i, wImg in enumerate(wData['wImg']):
     wImg_pad = np.pad(wImg, (
         (0, 0), (0, 0), (0, 0),
         (padY0, padY1), (padX0, padX1),
-        ), constant_values=0)
+        ), constant_values=255)
     
     # Append wData
     wData['wImg_pad'].append(np.transpose(wImg_pad, (3,4,0,1,2)))
@@ -263,47 +265,25 @@ for row in range(wRow):
 dispWell = np.vstack(dispWell)
 dispWell = np.transpose(dispWell, (2,3,4,0,1))
 
-# Rescale and convert dispWell to uint8 
-if 
-    
-    def rescale_to_uint8(img, lowQ, highQ):
-        lower = np.percentile(img, lowQ)
-        upper = np.percentile(img, highQ)    
-        img = ((img - lower) / (upper - lower) * 255).clip(0, 255).astype(np.uint8)  
-        return img
-    
-    # Run rescale_to_uint8 in parallel
-    results = Parallel(n_jobs=-1)(
-        delayed(rescale_to_uint8)(
-            dispWell[:,:,chn,:,:],
-            1, 99,
-            ) 
-        for chn in range(dispWell.shape[2])
-        )
-    dispWell = np.stack(results, axis=0)
-    dispWell = np.transpose(dispWell, (2,0,1,3,4))   
-
 end = time.time()
 print(f'  {(end-start):5.3f} s') 
 
 #%% Save ----------------------------------------------------------------------
     
+start = time.time()
+print('Save data')
+
 # io.imsave(
 #     img_path.replace('.czi', '_dispRaw.tif'),
-#     dispRaw.astype('uint16'),
-#     check_contrast=False,
-#     imagej=True,
-#     metadata={
-#         'axes': 'TZCYX', 
-#         }
+#     dispRaw, check_contrast=False, imagej=True,
+#     metadata={'axes': 'TZCYX'}
 #     )
 
 io.imsave(
     img_path.replace('.czi', '_dispWell.tif'),
-    dispWell,
-    check_contrast=False,
-    imagej=True,
-    metadata={
-        'axes': 'TZCYX', 
-        }
+    dispWell, check_contrast=False, imagej=True,
+    metadata={'axes': 'TZCYX'}
     )
+
+end = time.time()
+print(f'  {(end-start):5.3f} s') 
