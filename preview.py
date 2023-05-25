@@ -1,6 +1,7 @@
 #%% Imports -------------------------------------------------------------------
 
 import re
+import cv2
 import sys
 import time
 import numpy as np
@@ -9,10 +10,9 @@ from pathlib import Path
 from itertools import product
 from pylibCZIrw import czi as pyczi
 from joblib import Parallel, delayed 
+from PIL import Image, ImageDraw, ImageFont
 
 #%% Comments ------------------------------------------------------------------
-
-'Add well and tile info on image (should be optionnal)'
 
 #%% Parameters ----------------------------------------------------------------
 
@@ -23,6 +23,8 @@ C = 'all'
 zoom = 0.1
 pad = 5 
 noGap = True
+labels = True
+labelSize = 0.75
 
 # img_name = 'Digoxin_Bulfan_blm_mel5-01.czi'
 img_name = 'test02-withsoftwareAF-20x1x-095-60wells-01.czi'
@@ -111,16 +113,46 @@ def extract_scenes(s):
     
     # Extract scenes
     with pyczi.open_czi(img_path) as czidoc:        
+        
         for pattern, idx in zip(patterns, idxs):
             img = czidoc.read(
                 roi=(x0, y0, sWidth, sHeight), 
                 plane={'T': pattern[0], 'Z': pattern[1], 'C': pattern[2]}, 
                 zoom=zoom).squeeze()
-            if md_img['PixelType'] == 'Gray8':
-                sImg[idx[0],idx[1],idx[2],...] = img
+            
+            # Concert uint16 to uint8
             if md_img['PixelType'] == 'Gray16':
-                sImg[idx[0],idx[1],idx[2],...] = (img // 255).astype('uint8')
-        
+                img = img // 255
+                
+            # Add well and tile labels                
+            if labels:
+                
+                width = int(sWidth * zoom)
+                height = int(sHeight * zoom)                
+                font_wID = ImageFont.truetype(
+                    'arial.ttf', size=int(width // 4 * labelSize)) 
+                font_wTile = ImageFont.truetype(
+                    'arial.ttf', size=int(width // 6 * labelSize)) 
+                text_img = Image.new('L', (width, height), 'black')                
+                draw = ImageDraw.Draw(text_img)
+                
+                if wTile == 'P1':                
+                    draw.text(
+                     (10, 0), f'{wID}', 
+                     font=font_wID, fill=255,
+                     stroke_width=1
+                     ) 
+                    
+                draw.text(
+                    (width - 10, height - 10), f'{wTile}', 
+                    font=font_wTile, fill=255,
+                    anchor='rb'
+                    )
+
+                img = np.maximum(img, text_img)
+
+            sImg[idx[0],idx[1],idx[2],...] = img
+                                
     # Scale coordinates (acc. to zoom)
     x0 = int(x0 * zoom)
     y0 = int(y0 * zoom)
@@ -144,7 +176,7 @@ for result in results:
     sData['sHeight'].append(result[4])
     sData['wID'].append(result[5])
     sData['wTile'].append(result[6])  
-    
+        
 # Extract relevant variables 
 sWidth = sData['sWidth'][0]
 sHeight = sData['sHeight'][0]
