@@ -3,4 +3,4 @@ Extract preview from CD7 czi files
 
 ## Installation
 pip install pylibCZIrw
-pip install aicspylibczi>=3.0.5 fsspec>=2022.7.1
+pip install aicsimageio aicspylibczi>=3.1.1 fsspec>=2022.8.0
