@@ -1,22 +1,17 @@
 #%% Imports -------------------------------------------------------------------
 
-import re
 import sys
-import time
 import numpy as np
 from skimage import io 
 from pathlib import Path
 from itertools import product
 from pylibCZIrw import czi as pyczi
 from joblib import Parallel, delayed 
+from PIL import Image, ImageDraw, ImageFont
 
 #%% Comments ------------------------------------------------------------------
 
-'Add padding solution to save_preview'
-'Tile images for save_preview'
-'Manage datatype outputs'
-
-#%% Names ---------------------------------------------------------------------
+#%% Name czi ------------------------------------------------------------------
 
 czi_name = 'Masina_CD7_(3c-540s)_20x_16bits.czi'
 # czi_name = 'Stebler_CD7_(4c-120s)_5x-2x_14bits.czi'
@@ -97,9 +92,9 @@ def extract_metadata(czi_path):
             float(md_pix[2]['Value'])
             )) 
     pix_dims = tuple(('x', 'y', 'z'))  
-    
+        
     # Read time info
-    if md_time is not None:
+    if nT > 1:
         time_interval = float(md_time['Value'])
         if md_time['DefaultUnitFormat']  == 'ms':
             time_interval /= 1000
@@ -239,7 +234,7 @@ def extract_data(czi_path, rT='all', rZ='all', rC='all', zoom=1):
                 
         return data
     
-    # Run extract_data
+    # Run _extract_data
     if metadata['nS'] > 1:
         outputs = Parallel(n_jobs=-1)(
             delayed(_extract_data)(scn) 
@@ -261,7 +256,7 @@ def extract_data(czi_path, rT='all', rZ='all', rC='all', zoom=1):
 def save_tiff(czi_path, rT='all', rZ='all', rC='all', zoom=1, hyperstack=True):
 
     """ 
-    Extract and save scenes from a czi file as 
+    Save scenes from a czi file as 
     ImageJ compatible tiff hyperstack or images.    
     Saved files are stored new folder named like 
     the czi file without extension.
@@ -374,61 +369,224 @@ def save_tiff(czi_path, rT='all', rZ='all', rC='all', zoom=1, hyperstack=True):
                                 }
                             ) 
 
-#%% Function: save_preview ----------------------------------------------------
+#%% Function: CD7_preview -----------------------------------------------------
 
-# Arguments
-zoom = 0.05
-noGap = True
-
-# -----------------------------------------------------------------------------
-
-# Extract data
-metadata, data = extract_data(czi_path, rT='all', rZ='all', rC='all', zoom=zoom)
-
-#%%
-
-# 
-if metadata['nS'] <= 1:
-    print('Cannot preview single scene czi')
-    sys.exit()
+def CD7_preview(
+        czi_path, 
+        rT='all', 
+        rZ='all', 
+        rC='all',
+        zoom=1,
+        uint8=True,
+        labels=True, 
+        label_size=1,
+        no_gap=True,
+        pad_size=1
+        ):
     
-#
-nT = metadata['nT']
-nZ = metadata['nZ']
-nC = metadata['nC']
-   
-#
-well_data = []
-for well in sorted(set(metadata['scn_well'])):
+    """ 
+    Save a preview image of a multiwell CD7 acquisition as a tiff file 
+    named like the czi + 'preview' suffix.
     
-    #
-    idx = [i for i, w in enumerate(metadata['scn_well']) if well in w]
-    
-    #
-    sX0 = [int(metadata['sX0'][i] * zoom) for i in idx]
-    sY0 = [int(metadata['sY0'][i] * zoom) for i in idx]
-    snX = [int(metadata['snX'][i] * zoom) for i in idx]
-    snY = [int(metadata['snY'][i] * zoom) for i in idx]    
-    wX0 = [x0 - np.min(sX0) for x0 in sX0]
-    wY0 = [y0 - np.min(sY0) for y0 in sY0]    
-    wX1 = [x0 + nX for x0, nX in zip(wX0, snX)]
-    wY1 = [y0 + nY for y0, nY in zip(wY0, snY)]    
-       
-    #
-    tmp_data = np.zeros((nT, nZ, nC, np.max(wY1), np.max(wX1)), dtype=int)
-    for i in range(len(idx)):
-        tmp_data[..., wY0[i]:wY1[i], wX0[i]:wX1[i]] = data[idx[i]]        
-    
-    #
-    if noGap:
-        nonzero_rows = np.where(np.any(tmp_data[0,0,0,...], axis=1))[0]
-        nonzero_cols = np.where(np.any(tmp_data[0,0,0,...], axis=0))[0]    
-        tmp_data = tmp_data[..., nonzero_rows, :][..., nonzero_cols]   
-    
-    #
-    well_data.append(tmp_data)
+    Parameters
+    ----------
+    czi_path : str 
+        Path to the czi file.
         
+    rT : str, int or tuple of int
+        Requested timepoint(s).
+        To select all timepoint(s) use 'all'.
+        To select some timepoint(s) use tuple of int : expl (0, 1, 4).
+        To select a specific timepoint use int : expl 0.
+        
+    rZ : str, int or tuple of int
+        Requested timepoint(s).
+        Selection rules see rT.
+        
+    rC : str, int or tuple of int
+        Requested timepoint(s).
+        Selection rules see rT.
+            
+    zoom : float
+        Downscaling factor for extracted images.
+        From 0 to 1, 1 meaning no downscaling.
+        
+    uint8 : bool
+        If True, and original data is uint16, convert to uint8
+
+    labels : bool
+        If True, add well and position labels 
     
+    label_size : float
+        Adjust label size (< 1 reduce size, >1 increase size)
+        
+    no_gap : bool
+        If True, remove gaps between positions
+        
+    pad_size : int
+        Pad well image with white pixels 
+                    
+    """
+    
+    # Extract data
+    metadata, data = extract_data(czi_path, rT=rT, rZ=rZ, rC=rC, zoom=zoom)
+
+    # Check if multiple scenes czi
+    if metadata['nS'] <= 1:
+        print('Cannot preview single scene czi')
+        sys.exit()
+
+    well_data = []
+    well_names = sorted(set(metadata['scn_well']))
+    for well_name in well_names:
+        
+        # Indexes
+        idx = [i for i, w in enumerate(metadata['scn_well']) if well_name in w]
+        
+        # Spatial info
+        sX0 = [int(metadata['sX0'][i] * zoom) for i in idx]
+        sY0 = [int(metadata['sY0'][i] * zoom) for i in idx]
+        snX = [int(metadata['snX'][i] * zoom) for i in idx]
+        snY = [int(metadata['snY'][i] * zoom) for i in idx]    
+        wX0 = [x0 - np.min(sX0) for x0 in sX0]
+        wY0 = [y0 - np.min(sY0) for y0 in sY0]    
+        wX1 = [x0 + nX for x0, nX in zip(wX0, snX)]
+        wY1 = [y0 + nY for y0, nY in zip(wY0, snY)]    
+           
+        # Extract and process scenes
+        tmp_data = np.zeros((
+            metadata['nT'], metadata['nZ'], metadata['nC'], 
+            np.max(wY1), np.max(wX1)
+            ), dtype=int)
+        
+        for i in range(len(idx)):
+            
+            scene = data[idx[i]]
+            
+            # Convert to uint8
+            if uint8 and metadata['bit_depth'] == 16:
+                scene = scene // 255
+                
+            # Add labels
+            if labels:
+                
+                width = scene.shape[-1]
+                height = scene.shape[-2]  
+                scn_well = metadata['scn_well'][idx[i]]
+                scn_pos = metadata['scn_pos'][idx[i]]
+                fill = 255 if uint8 else 65535
+                
+                font_well = ImageFont.truetype(
+                    'arial.ttf', size=int(width // 4 * label_size)) 
+                font_pos = ImageFont.truetype(
+                    'arial.ttf', size=int(width // 6 * label_size)) 
+                text_img = Image.new('I', (width, height), 'black')                
+                draw = ImageDraw.Draw(text_img)
+                
+                if scn_pos == 1:                
+                    draw.text(
+                      (10, 5), f'{scn_well}', 
+                      font=font_well, fill=fill,
+                      ) 
+                    
+                draw.text(
+                    (width - 10, height - 10), f'{scn_pos}', 
+                    font=font_pos, fill=fill,
+                    anchor='rb'
+                    )
+                
+                np.maximum(scene, text_img, out=scene)
+                
+            tmp_data[..., wY0[i]:wY1[i], wX0[i]:wX1[i]] = scene
+
+        # Remove gaps
+        if no_gap:        
+            nonzero_rows = np.where(np.any(tmp_data[0,0,0,...], axis=1))[0]
+            nonzero_cols = np.where(np.any(tmp_data[0,0,0,...], axis=0))[0]    
+            tmp_data = tmp_data[..., nonzero_rows[:, None], nonzero_cols]
+
+        # Append well_data
+        well_data.append(tmp_data)
+
+    # Process well_data
+    wnX = [wdata.shape[-1] for wdata in well_data]
+    wnY = [wdata.shape[-2] for wdata in well_data]
+    wnX_mode = np.argmax(np.bincount(np.array(wnX)))
+    wnY_mode = np.argmax(np.bincount(np.array(wnY)))
+
+    for i, wdata in enumerate(well_data):
+
+        # Check for x shape consitency
+        if wdata.shape[-1] > wnX_mode:
+            wdata = wdata[..., 0:wnX_mode]
+        if wdata.shape[-1] < wnX_mode:
+            padX = wnX_mode - wdata.shape[-1]
+            wdata = np.pad(wdata, (
+                (0, 0), (0, 0), (0, 0),
+                (0, 0), (padX, 0),
+                ), constant_values=0)
+        
+        # Check for y shape consitency
+        if wdata.shape[-2] > wnY_mode:
+            wdata = wdata[..., 0:wnY_mode,:]
+        if wdata.shape[-2] < wnY_mode:
+            padY = wnY_mode - wdata.shape[-2]
+            wdata = np.pad(wdata, (
+                (0, 0), (0, 0), (0, 0),
+                (padY, 0), (0, 0),
+                ), constant_values=0)
+                
+        # Pad well border
+        constant_values = 255 if uint8 else 65535
+        wdata[..., :pad_size, :] = constant_values  # Left border
+        wdata[..., -pad_size:, :] = constant_values  # Right border
+        wdata[..., :, :pad_size] = constant_values  # Top border
+        wdata[..., :, -pad_size:] = constant_values  # Bottom border
+            
+        well_data[i] = wdata
+        
+    # Count well rows and columns
+    def count_rows_cols(strings_list):
+        letters_set = set()
+        digits_set = set()        
+        for string in strings_list:
+            letters = [char for char in string if char.isalpha()]
+            digits = [char for char in string if char.isdigit()]
+            letters_set.update(letters)
+            digits_set.update(digits)
+        nRow = len(letters_set)
+        nCol = len(digits_set)
+        return nRow, nCol
+    nRow, nCol = count_rows_cols(well_names)  
+
+    # Assemble preview
+    preview = []
+    well_data = [np.transpose(wdata, (3,4,0,1,2)) for wdata in well_data]
+    for row in range(nRow):
+        preview.append(np.hstack(well_data[nCol*row:nCol*row+nCol]))
+    preview = np.vstack(preview)
+    preview = np.transpose(preview, (2,3,4,0,1))
+    well_data = [np.transpose(wdata, (2,3,4,0,1)) for wdata in well_data]
+
+    # Save preview
+    pix_size_x = metadata['pix_size'][0] / zoom * 1e06 
+    pix_size_y = metadata['pix_size'][1] / zoom * 1e06
+    pix_size_z = metadata['pix_size'][2] * 1e06
+    time_interval = metadata['time_interval']
+    dtype = 'uint8' if uint8 else 'uint16'
+    io.imsave(
+        czi_path.replace('.czi', '_preview.tif'),
+        preview.astype(dtype),
+        check_contrast=False, imagej=True,
+        resolution=(1/pix_size_x, 1/pix_size_y),
+        metadata={
+            'unit': 'um',
+            'spacing': pix_size_z,
+            'finterval': time_interval,
+            'axes': 'TZCYX'
+            }
+        )
+
 #%% Execute -------------------------------------------------------------------
 
 # start = time.time()
@@ -439,33 +597,34 @@ for well in sorted(set(metadata['scn_well'])):
 # end = time.time()
 # print(f'  {(end-start):5.3f} s') 
 
-# # -----------------------------------------------------------------------------
+# # # -----------------------------------------------------------------------------
    
 # start = time.time()
 # print('Extract data')
 
-# metadata, data = extract_data(czi_path, rT='all', rZ='all', rC='all', zoom=0.1)
+# metadata, data = extract_data(czi_path, rT='all', rZ='all', rC='all', zoom=0.25)
 
 # end = time.time()
 # print(f'  {(end-start):5.3f} s') 
 
-# # -----------------------------------------------------------------------------
+# # # -----------------------------------------------------------------------------
 
 # start = time.time()
-# print('save tiff')
+# print('Save tiff')
 
-# # Extract data
-# save_tiff(czi_path, rT='all', rZ='all', rC='all', zoom=0.1, hyperstack=True)
+# save_tiff(czi_path, rT='all', rZ='all', rC='all', zoom=0.25, hyperstack=True)
 
 # end = time.time()
 # print(f'  {(end-start):5.3f} s') 
 
-#%% Save ----------------------------------------------------------------------
+# # # -----------------------------------------------------------------------------
 
-# io.imsave(
-#     czi_path.replace('.czi', '.tif'),
-#     data.astype('uint16'), check_contrast=False, imagej=True,
-#     metadata={'axes': 'TZCYX'}
+# start = time.time()
+# print('CD7 preview')
+
+# CD7_preview(czi_path, rT='all', rZ='all', rC='all', zoom=0.25,
+#     uint8=True, labels=True, label_size=0.75, no_gap=True, pad_size=4
 #     )
 
-# digits = len(str(len(data)))
+# end = time.time()
+# print(f'  {(end-start):5.3f} s') 
