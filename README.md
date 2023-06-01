@@ -1,5 +1,5 @@
-# ETH-ScopeM_CD7-Preview
-Extract preview from CD7 czi files
+# ETH-ScopeM_CZITools
+Collection of czi file manipulation tools 
 
 ## Installation
 pip install pylibCZIrw  
