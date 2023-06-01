@@ -1,5 +1,5 @@
 # ETH-ScopeM_CZITools
-Collection of czi file manipulation tools 
+Collection of tools to manipulate czi files 
 
 ## Installation
 pip install pylibCZIrw  
