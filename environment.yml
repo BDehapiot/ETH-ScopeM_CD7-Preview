@@ -11,3 +11,7 @@ dependencies:
   - pillow
   - joblib
   - pip
+  - pip:
+    - pylibCZIrw
+    - aicspylibczi>=3.1.1
+    - fsspec>=2022.8.0

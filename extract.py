@@ -1,6 +1,7 @@
 #%% Imports -------------------------------------------------------------------
 
 import sys
+import time
 import numpy as np
 from skimage import io 
 from pathlib import Path
@@ -13,19 +14,21 @@ from PIL import Image, ImageDraw, ImageFont
 
 #%% Name czi ------------------------------------------------------------------
 
-czi_name = 'Masina_CD7_(3c-540s)_20x_16bits.czi'
+data_path = 'D:\local_CZITools\data'
+
+# czi_name = 'Masina_CD7_(3c-540s)_20x_16bits.czi'
 # czi_name = 'Stebler_CD7_(4c-120s)_5x-2x_14bits.czi'
 # czi_name = 'Stoma_CD7_(3z-4c-240s)_5x-2x_16bits.czi'
 # czi_name = 'Bertet_880_(100t-10z)_40x_8bits.czi'
 # czi_name = 'Bertet_880_(566t-15z)_40x_8bits.czi'
-# czi_name = 'Lelouard_780_(14z-6c)_40x_8bits.czi'
+czi_name = 'Lelouard_780_(14z-6c)_40x_8bits.czi'
 # czi_name = 'Sidor_880_(6z-4c)_100x_16bits.czi'
 # czi_name = 'Bruneau_Z2_(11z-3c)_20x_8bits_Stitching.czi'
 # czi_name = 'Aggad_880_(5z-3c)_40x_8bits.czi'
 
 #%% Initialize ----------------------------------------------------------------
 
-czi_path = str(Path('data') / czi_name)
+czi_path = str(Path(data_path) / czi_name)
 
 #%% Function: extract_metadata ------------------------------------------------
 
@@ -55,7 +58,7 @@ def extract_metadata(czi_path):
                 result = find_key(value, target_key)
                 if result is not None:
                     return result
-    
+
     # Extract metadata
     with pyczi.open_czi(czi_path) as czidoc:    
         md_all = czidoc.metadata['ImageDocument']['Metadata']
@@ -65,7 +68,7 @@ def extract_metadata(czi_path):
     md_chn = (md_img['Dimensions']['Channels']['Channel'])
     md_scn = (md_img['Dimensions']['S']['Scenes']['Scene'])
     md_time = find_key(md_all, 'TimeSpan')
-    
+
     # Read dimensions  
     nT = int(md_img['SizeT']) if 'SizeT' in md_img else 1
     nZ = int(md_img['SizeZ']) if 'SizeZ' in md_img else 1
@@ -73,10 +76,10 @@ def extract_metadata(czi_path):
     nY = int(md_img['SizeY']) if 'SizeY' in md_img else 1
     nX = int(md_img['SizeX']) if 'SizeX' in md_img else 1
     nS = int(md_img['SizeS']) if 'SizeS' in md_img else 1
-    
+
     # Read general info
     bit_depth = int(md_img['PixelType'][4:])
-    
+
     # Read pixel info
     pix_size, pix_dims = [], []
     if len(md_pix) == 2:   
@@ -104,16 +107,18 @@ def extract_metadata(czi_path):
             time_interval *= 3600
     else:
         time_interval = None
-    
+
     # Read channel info
     chn_name = []
     for chn in range(nC):
         if nC <= 1: chn_name.append(md_chn['@Name'])
         else: chn_name.append(md_chn[chn]['@Name'])
     chn_name = tuple(chn_name) 
-    
+
     # Read scene info
-    scn_well, scn_pos, snY, snX, sY0, sX0 = [], [], [], [], [], []
+    scn_well, scn_pos = [], []
+    snY, snX, sY0, sX0 = [], [], [], []
+    sY0stage, sX0stage = [], []
     if nS > 1:   
         for scn in range(nS):
             tmp_well = md_scn[scn]['ArrayName']
@@ -125,8 +130,15 @@ def extract_metadata(czi_path):
             snY.append(scn_coords[scn][3]) 
             snX.append(scn_coords[scn][2]) 
             sY0.append(scn_coords[scn][1]) 
-            sX0.append(scn_coords[scn][0]) 
-    
+            sX0.append(scn_coords[scn][0])
+            stage = md_scn[scn]['CenterPosition']
+            sYstage = float(stage[stage.index(',')+1:-1])
+            sXstage = float(stage[0:stage.index(',')])
+            sY0stage.append(np.round(
+                sYstage - (scn_coords[scn][3] * 0.5 * pix_size[0] * 1e06), 3))
+            sX0stage.append(np.round(
+                sXstage - (scn_coords[scn][2] * 0.5 * pix_size[0] * 1e06), 3))
+
     # Append metadata dict      
     metadata = {    
         'nT': nT, 'nZ': nZ, 'nC': nC, 'nY': nY, 'nX': nX, 'nS': nS, 
@@ -136,6 +148,7 @@ def extract_metadata(czi_path):
         'chn_name': chn_name,
         'scn_well': scn_well, 'scn_pos': scn_pos, 
         'snY': snY, 'snX': snX, 'sY0': sY0, 'sX0': sX0,
+        'sY0stage': sY0stage, 'sX0stage': sX0stage,
         }
     
     return metadata
