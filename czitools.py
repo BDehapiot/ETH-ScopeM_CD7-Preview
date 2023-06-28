@@ -66,8 +66,11 @@ def extract_metadata(czi_path):
     md_img = (md_all['Information']['Image'])
     md_pix = (md_all['Scaling']['Items']['Distance'])
     md_chn = (md_img['Dimensions']['Channels']['Channel'])
-    md_scn = (md_img['Dimensions']['S']['Scenes']['Scene'])
     md_time = find_key(md_all, 'TimeSpan')
+    try:
+        md_scn = (md_img['Dimensions']['S']['Scenes']['Scene'])
+    except:       
+        md_scn = None
 
     # Read dimensions  
     nT = int(md_img['SizeT']) if 'SizeT' in md_img else 1
