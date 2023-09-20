@@ -16,12 +16,14 @@ from PIL import Image, ImageDraw, ImageFont
 
 data_path = 'D:\local_CZITools\data'
 
+# czi_name = 'SpiroChem_5x_2x_plate-1_NA 39_20230818-01.czi'
+
 # czi_name = 'Masina_CD7_(3c-540s)_20x_16bits.czi'
 # czi_name = 'Stebler_CD7_(4c-120s)_5x-2x_14bits.czi'
 # czi_name = 'Stoma_CD7_(3z-4c-240s)_5x-2x_16bits.czi'
-# czi_name = 'Bertet_880_(100t-10z)_40x_8bits.czi'
+czi_name = 'Bertet_880_(100t-10z)_40x_8bits.czi'
 # czi_name = 'Bertet_880_(566t-15z)_40x_8bits.czi'
-czi_name = 'Lelouard_780_(14z-6c)_40x_8bits.czi'
+# czi_name = 'Lelouard_780_(14z-6c)_40x_8bits.czi'
 # czi_name = 'Sidor_880_(6z-4c)_100x_16bits.czi'
 # czi_name = 'Bruneau_Z2_(11z-3c)_20x_8bits_Stitching.czi'
 # czi_name = 'Aggad_880_(5z-3c)_40x_8bits.czi'
@@ -325,6 +327,11 @@ def save_tiff(czi_path, rT='all', rZ='all', rC='all', zoom=1, hyperstack=True):
             dir_path.mkdir(parents=True, exist_ok=True)
         return dir_path
     dir_path = setup_directory(czi_path)
+    
+    # Get dimension format
+    t_format = str(0) + str(len(str(metadata['nT'])))
+    z_format = str(0) + str(len(str(metadata['nZ'])))
+    c_format = str(0) + str(len(str(metadata['nC'])))
 
     # Save scenes as hyperstacks or separated images 
     for scn in range(len(data)):
@@ -369,7 +376,7 @@ def save_tiff(czi_path, rT='all', rZ='all', rC='all', zoom=1, hyperstack=True):
                     for c in range(scene.shape[2]):
                         
                         scene_path = Path(dir_path, 
-                            Path(czi_path).stem + f'{scn_name}_t{t}-z{z}-c{c}.tif'
+                            Path(czi_path).stem + f'{scn_name}_t{t:{t_format}}-z{z:{z_format}}-c{c:{c_format}}.tif'
                             )
                         
                         io.imsave(
@@ -605,13 +612,13 @@ def CD7_preview(
 
 #%% Execute -------------------------------------------------------------------
 
-# start = time.time()
-# print('Extract metadata')
+start = time.time()
+print('Extract metadata')
 
-# metadata = extract_metadata(czi_path)
+metadata = extract_metadata(czi_path)
 
-# end = time.time()
-# print(f'  {(end-start):5.3f} s') 
+end = time.time()
+print(f'  {(end-start):5.3f} s') 
 
 # # # -----------------------------------------------------------------------------
    
@@ -625,13 +632,13 @@ def CD7_preview(
 
 # # # -----------------------------------------------------------------------------
 
-# start = time.time()
-# print('Save tiff')
+start = time.time()
+print('Save tiff')
 
-# save_tiff(czi_path, rT='all', rZ='all', rC='all', zoom=0.25, hyperstack=True)
+save_tiff(czi_path, rT='all', rZ='all', rC='all', zoom=0.25, hyperstack=False)
 
-# end = time.time()
-# print(f'  {(end-start):5.3f} s') 
+end = time.time()
+print(f'  {(end-start):5.3f} s') 
 
 # # # -----------------------------------------------------------------------------
 
