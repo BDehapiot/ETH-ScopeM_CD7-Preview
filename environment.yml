@@ -2,16 +2,21 @@ name: CZITools
 
 channels:
   - conda-forge
-      
+
 dependencies:
+  # conda_core
   - python=3.10
   - numpy
   - scipy
   - scikit-image
-  - pillow
   - joblib
   - pip
+  # conda_spec
+  - pillow
+  - spyder
   - pip:
-    - pylibCZIrw
+    # pip_core
+    # pip_spec
+    - pylibczirw
     - aicspylibczi>=3.1.1
     - fsspec>=2022.8.0

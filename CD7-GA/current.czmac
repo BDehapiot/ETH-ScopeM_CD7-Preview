@@ -1,0 +1,43 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Script>
+  <Context>Zen26</Context>
+  <Version>1.0</Version>
+  <Language>Python</Language>
+  <Text>#%% Imports -------------------------------------------------------------------
+
+import time
+from os.path import exists
+from System.Diagnostics import Process
+
+#%% Initialize ----------------------------------------------------------------
+
+script_path = r'C:\Users\bdeha\Projects\ETH-ScopeM_CD7-GA\read_czi.py'
+table_path = r'C:\Users\bdeha\Projects\ETH-ScopeM_CD7-GA\xyStage.csv'
+
+#%% Execute -------------------------------------------------------------------
+
+# Execute external Python script
+app = Process();
+app.StartInfo.FileName = script_path
+app.Start()
+
+# Wait xyStage.csv being created before opening it
+while not exists(table_path):
+    time.sleep(1)
+table = Zen.Application.LoadTable(table_path, False)    
+
+# Print number of detected objects
+print(table.RowCount)
+
+# Extract x and yStage positions as float
+for i in range(table.RowCount):
+    xStage = float(table.GetValue(i, 0))
+    yStage = float(table.GetValue(i, 1))
+
+</Text>
+  <Author></Author>
+  <Description></Description>
+  <Keywords></Keywords>
+  <Row>20</Row>
+  <Column>30</Column>
+</Script>
